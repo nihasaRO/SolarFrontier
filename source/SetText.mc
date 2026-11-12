@@ -3,8 +3,8 @@ import Toybox.Lang;
 import Toybox.WatchUi;
 
 module SetText {
-    const IDS = [ Rez.JsonData.L2, Rez.JsonData.L5, Rez.JsonData.L6, Rez.JsonData.L11, Rez.JsonData.L12, Rez.JsonData.L13, Rez.JsonData.L14, Rez.JsonData.L16, Rez.JsonData.L17 ];
-    const IDX = [ 100, 101, 0, 0, 0, 102, 103, 1, 2, 104, 105, 106, 107, 3, 3, 4, 4, 4, 5, 6, 108, 7, 8, 109, 110, 111, 112, 113, 114, 115, 116, 8 ]b;
+    const IDS = [ Rez.JsonData.L2, Rez.JsonData.L5, Rez.JsonData.L11, Rez.JsonData.L12, Rez.JsonData.L13, Rez.JsonData.L14, Rez.JsonData.L16, Rez.JsonData.L17, Rez.JsonData.L21, Rez.JsonData.L23 ];
+    const IDX = [ 100, 101, 0, 0, 0, 102, 103, 1, 104, 105, 106, 107, 108, 2, 2, 3, 3, 3, 4, 5, 109, 6, 7, 110, 111, 112, 8, 113, 9, 114, 115, 7 ]b;
 
     // setting i's options: an array of chunks (a computed list like "day" is one chunk)
     function list(i) as Lang.Array {

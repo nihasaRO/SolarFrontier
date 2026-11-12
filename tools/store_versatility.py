@@ -75,7 +75,7 @@ C = {
     "next_sun":    dict(l3=SUN + "18:50" + DOT + "2:27", circle="Next sun event", big=SUN + "18:50" + DOT + "2:27"),
     "sun_both":    dict(l3="7:17" + SUN2 + "18:50", big="7:17" + SUN2 + "18:50"),
     "tz2":         dict(l1="UTC+3 13:23", circle="Second time zone"),
-    "zulu":        dict(l1="13:23Z"),
+    "zulu":        dict(l1="\u00ab16:00"),
     "daylength":   dict(l3="DAY 11:12 -3M", big="DAY 11:12 -3M"),
     "noon":        dict(l3="NOON 12:51", l1="NOON 12:51"),
     "golden":      dict(l3="GOLD 18:12", big="GOLD 18:12"),

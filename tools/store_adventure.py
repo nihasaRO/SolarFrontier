@@ -230,7 +230,7 @@ def anatomy(layout):
     zones = [(1, (11, 17), None, "LINE 1", f"Icon + text: {n('Line 1 icon')} icons, {n('Line 1 text')} texts, {n('Date format')} date formats"),
              (2, (11, 35), None, "LINE 2", f"A number ({n('Line 2 number')} choices) and a bar ({n('Line 2 bar')})"),
              (3, (11, 58), None, "LINE 3", f"{n('Line 3')} metrics, Context and rain timing included"),
-             (4, (117, 64), (126, 52), "CIRCLE", f"{n('Circle shows')} views: weather, wind, moon, 2nd time zone and more"),
+             (4, (117, 64), (126, 52), "CIRCLE", f"{n('Circle shows')} views: weather, wind, moon, thunderstorm and more"),
              (5, (105, 68), None, "TIME", "12 or 24 h, 4 colon and 4 minute styles"),
              (6, (11, 150), (4, 128), "SIDE GAUGES", f"Left and right, {n('Left gauge')} metrics each, as a bar or blocks")]
     if rim:

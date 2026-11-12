@@ -124,14 +124,14 @@ module Cfg {
     const WX_MINUTES = [ 15, 20, 30, 45, 60, 5, 10 ];        // options 5 and 6 appended; shown in order of minutes
     const L1 = [ 3, 4, 5, 6, 10, 11, 13, 15, 16, 18, 21, 25, 26, 27, 33, 34 ]b;    // line 1 text options 3.. -> line-3 metric
 
-    const DEFAULTS = [ 0, 0, 0, 1, 2, 0, 0, 0, 12, 0, 4, 2, 0, 0, 1, 1, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 4 ]b;
+    const DEFAULTS = [ 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 4, 2, 0, 0, 1, 1, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 4 ]b;
     const COUNTS = [ 8, 7, 18, 18, 18, 2, 4, 17, 28, 2, 7, 4, 2, 17, 17, 49, 49, 49, 26, 19, 8, 15, 48, 3, 8, 2, 31, 12, 21, 96, 7, 48 ]b;
 
 
     // Settings grouped by theme, in screen order. The watch menu lists the group titles (from the
     // menu texts, loaded only while it is open); the Garmin Connect app shows the same order with the
     // group name in front of each title (tools/make_project.py).
-    const GROUPS = [ [ 12, 5, 24 ]b, [ 0, 19, 1, 20, 21, 22 ]b, [ 7, 8 ]b, [ 23, 11, 6, 26, 27, 28, 29 ]b,
+    const GROUPS = [ [ 12, 5, 24 ]b, [ 0, 19, 1, 20, 21, 22 ]b, [ 7 ]b, [ 23, 11, 6, 26, 27, 28, 29 ]b,
                      [ 13, 14, 25 ]b, [ 2, 3, 4 ]b, [ 15, 16, 17, 18, 31 ]b, [ 9, 10 ]b, [ 30 ]b ];
     const GROUP_ROWS = 5;      // shown only with the Rows layout
     const GROUP_CHART = 6;     // shown only with the Chart layout

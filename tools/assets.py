@@ -188,6 +188,7 @@ LINE3_SYMBOLS = {
     "\u00a8": (["##", "##"], 3, 5, 7),                          # separator dot
     "\u00a9": ("F_MOUNT", None, None, 14),        # altitude: mountain in an 11 px box
     "\u00aa": ("I_STEPS", None, None, 14),        # steps: icon in an 11 px box
+    "\u00ab": ("S_STORM", None, None, 14),        # thunderstorm: icon in an 11 px box (line 1's storm forecast)
 }
 
 

@@ -26,10 +26,7 @@ ICON_TABLES = {
     "GAUGE": ["G_STRESS", "I_BOLT", "G_BATT", "G_SOLAR", "G_STEPS", "G_INT", "G_FLOORS", "G_MOVE", "G_DAY", None,
               "F_DROP", "N_UMBRELLA", "N_CLOUD", "N_MOON", "N_UV", "G_INT", "N_AIR"],
     "FIELD": ["I_STEPS", "I_RUN", "F_WEEK", "F_FLAME", "F_DIST", "F_STAIRS", "F_MOUNT", "F_BARO", "F_MAIL", "F_BATT", "I_BOLT", "F_ZIG"],
-    "COL": [None, "N_UMBRELLA", "F_DROP", "N_THERMO", "N_DEW", "N_THERMO", "N_HEART_O", "N_LUNGS", "F_MOUNT", "N_STAIRS_D",
-            "F_WEEK", "N_GUST", "N_CLOUD", "N_EYE", "N_RAIN", None, "N_UV", "N_MOON", "I_STEPS", "N_THERMO", "F_BARO", "N_MOON", "I_SUNHZ",
-            "N_UMBRELLA", "N_AIR", "I_BOLT", "I_SUNHZ",
-            "N_UV", "N_RAIN", "S_STORM", "N_POLLEN", "N_FREEZE", "N_SNOW", "N_STAIRS_D", "N_GUST"],
+    "COL": [None, "N_UMBRELLA", "F_DROP", "N_THERMO", "N_DEW", "N_THERMO", "N_HEART_O", "N_LUNGS", "F_MOUNT", "N_STAIRS_D", "F_WEEK", "N_GUST", "N_CLOUD", "N_EYE", "N_RAIN", None, "N_UV", "N_MOON", "I_STEPS", "N_THERMO", "F_BARO", "N_MOON", "N_GUST", "N_UMBRELLA", "N_AIR", "I_BOLT", "N_THERMO", "N_UV", "N_RAIN", "N_STAIRS_D", "N_POLLEN", "N_FREEZE", "N_SNOW", "N_STAIRS_D", "N_GUST"],
 }
 assets.emit_icon_module(os.path.join(PROJ, "source", "Ic.mc"), ICON_TABLES)
 print("time ink:", assets.time_ink_module(fonts["time"], os.path.join(PROJ, "source", "TimeInk.mc")))
@@ -56,7 +53,7 @@ def display_order(i):
 CHUNK = 16
 lists, list_of, idx = [], {}, []
 for i, (title, opts) in enumerate(zip(text["t"], text["o"])):
-    spec = {"Countdown day": "day", "Countdown year": "year", "Countdown time": "time"}.get(title)
+    spec = {"Countdown time": "time"}.get(title)                 # day and year: ordinary lists
     if spec:
         pieces = (spec,)
     else:
@@ -109,7 +106,8 @@ group_titles = text["g"]
 groups = [list(map(int, re.findall(r"\d+", grp))) for grp in re.findall(r"\[([^\[\]]*)\]", re.search(r"GROUPS = \[(.*)\];", cfg_src, re.S).group(1))]
 order = [i for grp in groups for i in grp]
 section = {i: group_titles[k] for k, grp in enumerate(groups) for i in grp}
-assert sorted(order) == list(range(len(keys))) == list(range(len(text["t"])))
+assert len(set(order)) == len(order) and set(order) <= set(range(len(keys)))   # a setting outside every group is
+                                                     # retired: its storage number stays reserved, no menu, no phone entry
 sdir = os.path.join(PROJ, "resources", "settings")
 os.makedirs(sdir, exist_ok=True)
 with open(os.path.join(sdir, "properties.xml"), "w", newline="\n") as fh:

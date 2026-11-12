@@ -32,10 +32,6 @@ class MenuView extends WatchUi.View {
         return Cfg.GROUPS[mGroup] as Lang.ByteArray;
     }
 
-    // Countdown day, year and time are generated, not read from a list.
-    private function computed() {
-        return mKey == Cfg.CD_DAY || mKey == Cfg.CD_YEAR || mKey == Cfg.CD_TIME;
-    }
 
     private function count() {
         if (mLevel == 0) {
@@ -66,11 +62,7 @@ class MenuView extends WatchUi.View {
     // label length, then the label; the lists are chunks of up to 16 entries in the phone settings' order.
     private function readOption(p) as Void {
         mStored = p;
-        if (mKey == Cfg.CD_DAY) {
-            mEntry = (p + 1).format("%d");
-        } else if (mKey == Cfg.CD_YEAR) {
-            mEntry = (p == 20) ? "DAILY" : (2026 + p).format("%d");
-        } else if (mKey == Cfg.CD_TIME) {
+        if (mKey == Cfg.CD_TIME) {
             var h = (mHour < 0) ? p : mHour;
             var q = (mHour < 0) ? mSaved % 4 : p;
             mStored = h * 4 + q;
@@ -90,9 +82,6 @@ class MenuView extends WatchUi.View {
     private function savedPosition() {
         if (mKey == Cfg.CD_TIME) {
             return mSaved / 4;
-        }
-        if (computed()) {
-            return mSaved;
         }
         var pos = 0;
         for (var c = 0; c < mOptions.size(); c += 1) {
@@ -114,7 +103,7 @@ class MenuView extends WatchUi.View {
         mKey = items()[mItem];
         mSaved = Cfg.get(mKey);
         mHour = -1;
-        if (!computed()) {
+        if (mKey != Cfg.CD_TIME) {
             mOptions = SetText.list(mKey);
         }
     }

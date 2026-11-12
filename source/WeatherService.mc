@@ -42,8 +42,8 @@ class WeatherService extends System.ServiceDelegate {
               "wind_speed_unit" => "ms", "forecast_days" => 2, "forecast_hours" => 25, "forecast_minutely_15" => 8,
               "current" => join([ "temperature_2m", "relative_humidity_2m", "apparent_temperature", "weather_code", "cloud_cover",
                                   "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "visibility", "uv_index" ]),
-              "hourly" => join([ "temperature_2m", "weather_code", "precipitation_probability", "rain", "showers", "cape",
-                                 "freezing_level_height", "snowfall" ]),
+              "hourly" => join([ "temperature_2m", "weather_code", "precipitation_probability", "rain", "showers",
+                                 "freezing_level_height", "snowfall", "precipitation", "wind_gusts_10m" ]),
               "daily" => join([ "weather_code", "temperature_2m_max", "temperature_2m_min", "precipitation_probability_max",
                                 "rain_sum", "showers_sum", "uv_index_max" ]),
               "minutely_15" => "precipitation,snowfall" },
@@ -61,7 +61,7 @@ class WeatherService extends System.ServiceDelegate {
             return;
         }
         var d = data as Lang.Dictionary;
-        mResult = new [36];                          // fixed positions, see the table above (far lighter than a dictionary)
+        mResult = new [38];                          // fixed positions, see the table above (far lighter than a dictionary)
         mResult[0] = Time.now().value();
         var c = d["current"];
         if (c instanceof Lang.Dictionary) {
@@ -86,26 +86,36 @@ class WeatherService extends System.ServiceDelegate {
             mResult[15] = at(h["temperature_2m"], 3);
             mResult[16] = cond(at(h["weather_code"], 3));
             mResult[17] = at(pop, 3);
-            mResult[26] = maxOf(h["cape"], 0, 6);              // storm energy, next 6 hours, J/kg
+            // 26: the thunderstorm start, set below from the weather codes (storm energy alone is no forecast)
             mResult[27] = at(h["freezing_level_height"], 0);   // m
+            mResult[37] = at(h["wind_gusts_10m"], 1);          // strongest gust of the coming hour, m/s
+            // one walk over the hours (at() is null past the end or for missing data): new snow, hours 1-24 (each
+            // value is the hour before its time); rain + showers and snow, hours 1-12; the first thunderstorm hour
+            // (codes 95-99), hours 0-6
             var sn = h["snowfall"];
-            if (sn instanceof Lang.Array) {                      // new snow, next 24 hours, cm: each value is the
-                var sum = 0.0;                                   // hour before its time, so hours 1-24 (not 0)
-                for (var i = 1; i < sn.size() && i <= 24; i += 1) {
-                    if (sn[i] != null) {
-                        sum += sn[i];
-                        if (i <= 12) {
-                            s12 += sn[i];
-                        }
+            var hw = h["weather_code"];
+            var sum = 0.0;
+            for (var i = 0; i <= 24; i += 1) {
+                var sv = at(sn, i);
+                if (i > 0 && sv != null) {
+                    sum += sv;
+                    if (i <= 12) {
+                        s12 += sv;
                     }
                 }
-                mResult[28] = sum;
-            }
-            for (var q = 1; q <= 12; q += 1) {
-                var v = plus(at(h["rain"], q), at(h["showers"], q));
-                if (v != null) {
-                    r12 += v;
+                if (i > 0 && i <= 12) {
+                    var rv = plus(at(h["rain"], i), at(h["showers"], i));
+                    if (rv != null) {
+                        r12 += rv;
+                    }
                 }
+                var cw = at(hw, i);
+                if (i <= 6 && cw != null && cw >= 95 && mResult[26] == null) {
+                    mResult[26] = at(h["time"], i);
+                }
+            }
+            if (sn instanceof Lang.Array) {
+                mResult[28] = sum;
             }
         }
         var dl = d["daily"];
@@ -127,19 +137,33 @@ class WeatherService extends System.ServiceDelegate {
         // (51..99: drizzle, rain, snow, showers, thunderstorms) up to 12 hours ahead. 23: change time or null.
         // A 15-minute block is wet from 0.1 mm (trace amounts ignored). 34: whether the precipitation that matters
         // (the current one, or the coming one) is snow: from the forecast's snowfall, or the hourly weather code.
+        // Native 15-minute forecasts exist only for the US (HRRR) and Central Europe (ICON-D2, AROME); elsewhere the
+        // 15-minute data is hourly data spread out, so only the hourly forecast is used (boxes set a little inside
+        // the real domains, as verified for Context Ahead). 36: 1 native, 0 hourly only.
+        var fine = (mLat >= 25 && mLat <= 49 && mLon >= -125 && mLon <= -67)
+                   || (mLat >= 43.5 && mLat <= 55.5 && mLon >= -4 && mLon <= 19.5);
+        mResult[36] = fine ? 1 : 0;                      // (+2 below: freezing rain within the hour)
         var mt = (m instanceof Lang.Dictionary) ? m["time"] : null;
         var sf = (m instanceof Lang.Dictionary) ? m["snowfall"] : null;
         var wet = null;
         var chg = null;
         var tEnd = 0;
         var at = 0;
-        if (pr instanceof Lang.Array && mt instanceof Lang.Array && pr.size() > 0 && mt.size() >= pr.size()) {
+        if (fine && pr instanceof Lang.Array && mt instanceof Lang.Array && pr.size() > 0 && mt.size() >= pr.size()) {
             wet = pr[0] != null && pr[0] >= 0.1;
             for (var k = 1; k < pr.size(); k += 1) {
                 if (pr[k] != null && (pr[k] >= 0.1) != wet) {
-                    chg = mt[k];
-                    at = wet ? 0 : k;                    // raining: the current block; dry: the block it starts
-                    break;
+                    var dry = true;                      // rain to dry counts only if the next blocks (75 min, as
+                    for (var q = k + 1; wet && q < pr.size() && q <= k + 5; q += 1) {   // far as the data goes) stay dry
+                        if (pr[q] != null && pr[q] >= 0.1) {
+                            dry = false;
+                        }
+                    }
+                    if (dry) {
+                        chg = mt[k];
+                        at = wet ? 0 : k;                // raining: the current block; dry: the block it starts
+                        break;
+                    }
                 }
             }
             tEnd = mt[pr.size() - 1] + 900;
@@ -149,15 +173,23 @@ class WeatherService extends System.ServiceDelegate {
         }
         var hc = (h instanceof Lang.Dictionary) ? h["weather_code"] : null;
         var ht = (h instanceof Lang.Dictionary) ? h["time"] : null;
-        if (chg == null && hc instanceof Lang.Array && ht instanceof Lang.Array) {
-            for (var j = 0; j < hc.size() && j < ht.size() && j <= 12; j += 1) {
-                if (hc[j] != null && ht[j] >= tEnd) {        // the hours after the 15-minute data
-                    var w = hc[j] >= 51;
+        var pa = (h instanceof Lang.Dictionary) ? h["precipitation"] : null;
+        if (hc instanceof Lang.Array && hc.size() > 1) {
+            var c1 = hc[1];
+            if (c1 == 56 || c1 == 57 || c1 == 66 || c1 == 67) {
+                mResult[36] += 2;                        // freezing drizzle or rain within the hour
+            }
+        }
+        if (chg == null && hc instanceof Lang.Array && ht instanceof Lang.Array && pa instanceof Lang.Array) {
+            for (var j = 0; j < hc.size() && j < ht.size() && j < pa.size() && j <= 12; j += 1) {
+                if (hc[j] != null && pa[j] != null && ht[j] >= tEnd) {   // the hours after the 15-minute data
+                    var w = pa[j] >= 0.3;                // wet from the hour's amount: codes 51+ include light drizzle
                     var s = (hc[j] >= 71 && hc[j] <= 77) || hc[j] == 85 || hc[j] == 86;   // snow codes
                     if (wet == null) {
                         wet = w;
                         mResult[34] = w ? (s ? 1 : 0) : null;
-                    } else if (w != wet) {
+                    } else if (w != wet && !(wet && j + 1 < pa.size() && pa[j + 1] != null && pa[j + 1] >= 0.3)) {
+                                                         // (rain to dry: the next hour dry too)
                         chg = ht[j];
                         if (w) {
                             mResult[34] = s ? 1 : 0;     // the coming precipitation
@@ -171,15 +203,16 @@ class WeatherService extends System.ServiceDelegate {
         mResult[35] = (mResult[34] == 1) ? s12 : r12;    // the amount of the kind that falls (snow: cm, rain: mm)
         mResult[33] = (wet == null) ? null : (wet ? 1 : 0);
         d = null;
-        // air quality and pollen (setting index, option): line 3, columns, rows, gauges, line-2 bar
+        // air quality and pollen (setting index, option): line 3, columns, rows, gauges, line-2 bar; and Context
+        // (line 3 and big text), so its air warnings work without an air metric on the face
         if (!isSet([ 22, 32, 15, 38, 16, 38, 17, 38, 2, 17, 3, 17, 4, 17, 13, 16, 14, 16, 21, 14,
-                     22, 38, 15, 44, 16, 44, 17, 44, 31, 32, 31, 38 ]b)) {        // + big text (setting 31)
+                     22, 38, 15, 44, 16, 44, 17, 44, 31, 32, 31, 38, 22, 47, 31, 47 ]b)) {   // + big text (31), + Context (47)
             Background.exit(mResult);
             return;
         }
         Communications.makeWebRequest(
             "https://air-quality-api.open-meteo.com/v1/air-quality",
-            { "latitude" => mLat, "longitude" => mLon, "current" => "european_aqi," + join(POLLEN) },
+            { "latitude" => mLat, "longitude" => mLon, "current" => "european_aqi,us_aqi," + join(POLLEN) },
             {
                 :method => Communications.HTTP_REQUEST_METHOD_GET,
                 :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON
@@ -194,8 +227,18 @@ class WeatherService extends System.ServiceDelegate {
         } else if (data instanceof Lang.Dictionary) {
             var c = (data as Lang.Dictionary)["current"];
             if (c instanceof Lang.Dictionary) {
-                var e = c["european_aqi"];               // 0-20 good, 20-40 fair, 40-60 moderate, 60-80 poor, 80-100 very poor, above 100 extremely poor
-                mResult[29] = (e == null) ? null : ((e < 20) ? 1 : ((e < 40) ? 2 : ((e < 60) ? 3 : ((e < 80) ? 4 : ((e <= 100) ? 5 : 6)))));
+                var e = c["us_aqi"];
+                if (mLon < -50 && mLat > 14 && e != null) {
+                    // North America: the US index (0-50 good, -100 moderate, -150 unhealthy for sensitive groups,
+                    // -200 unhealthy, -300 very unhealthy, above hazardous), same six levels; flag 4: US words
+                    mResult[29] = (e <= 50) ? 1 : ((e <= 100) ? 2 : ((e <= 150) ? 3 : ((e <= 200) ? 4 : ((e <= 300) ? 5 : 6))));
+                    if (mResult[36] != null) {
+                        mResult[36] += 4;
+                    }
+                } else {
+                    e = c["european_aqi"];               // 0-20 good, 20-40 fair, 40-60 moderate, 60-80 poor, 80-100 very poor, above 100 extremely poor
+                    mResult[29] = (e == null) ? null : ((e < 20) ? 1 : ((e < 40) ? 2 : ((e < 60) ? 3 : ((e < 80) ? 4 : ((e <= 100) ? 5 : 6)))));
+                }
                 // pollen (Europe, in season): the highest level of the six types, and which type it is
                 var best = null;
                 var type = 0;

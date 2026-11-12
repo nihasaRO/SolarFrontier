@@ -1,6 +1,6 @@
 """Hero image (1440 x 720) with the face's real numbers, counted from the option lists:
-76 metrics (31 weather, 20 outdoors = sun & moon + tactical, 21 health & activity, 4 watch),
-16 circle views, 8 chart sources, 2 layouts, 16 slots, 660 options.
+74 metrics (34 weather, 16 outdoors = sun & moon + tactical, 21 health & activity, 4 watch),
+16 circle views, 8 chart sources, 2 layouts, 16 slots, 631 options.
 Faces are taken from store/versatility-*.png (run tools/store_versatility.py first).
 """
 import os
@@ -38,11 +38,11 @@ for (img, pos, size, x, y) in ((4, 2, 360, 0, 120), (2, 1, 360, 205, 240), (1, 3
 
 d = ImageDraw.Draw(out)
 X = 800
-d.text((X, 70), "76 METRICS.", font=font("ExtraBold", 76), fill=INK)
+d.text((X, 70), "74 METRICS.", font=font("ExtraBold", 76), fill=INK)
 d.text((X, 150), "YOUR WAY.", font=font("ExtraBold", 76), fill=ORANGE)
-d.text((X, 252), "16 slots  \u00b7  660 options  \u00b7  billions of combinations", font=font("SemiBold", 30), fill=MUTED)
+d.text((X, 252), "16 slots  \u00b7  631 options  \u00b7  billions of combinations", font=font("SemiBold", 30), fill=MUTED)
 
-stats = [("31", "WEATHER"), ("20", "OUTDOORS"), ("21", "HEALTH &\nACTIVITY"),
+stats = [("34", "WEATHER"), ("16", "OUTDOORS"), ("20", "HEALTH &\nACTIVITY"),
          ("15", "CIRCLE\nVIEWS"), ("8", "CHARTS"), ("2", "LAYOUTS")]
 big, small = font("ExtraBold", 84), font("Bold", 25)
 for i, (num, label) in enumerate(stats):
