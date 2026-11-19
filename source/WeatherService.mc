@@ -9,11 +9,12 @@ import Toybox.Time;
 // Background process: fetches the weather from Open-Meteo (free, no key; data CC BY 4.0, open-meteo.com)
 // for the remembered location and hands a small summary to the face. Air quality and pollen come from
 // Open-Meteo's air-quality service (CAMS data), only while a slot shows them.
-// The summary is an array of 33 values at fixed positions (an error is sent as its number alone):
+// The summary is an array of 40 values at fixed positions (an error is sent as its number alone):
 //  0 ts  1 t  2 c  3 h  4 fl  5 ws  6 wb  7 g  8 cl  9 vis  10 r  11 uv  12 hi  13 lo  14 pc
 //  15 n3t  16 n3c  17 n3p  18 tmh  19 tml  20 tmc  21 tmp  22 tmd  23 rs  24 uvx  25 rt  26 cp  27 fz  28 sn
 //  29 aq  30 pl  31 pt  32 aqe (air quality error)  33 wet now (1/0); 34 snow (1/0); 35 amount next 12 h (cm snow / mm rain); 23 = time of the next dry/wet change
-// Units: C, m/s, %, m (visibility, freezing level), mm (rain), cm (snow), J/kg (CAPE);
+//  36 flags  37 gust next hour  38 the coldest of the next 3 hours (C)  39 its time
+// Units: C, m/s, %, m (visibility, freezing level), mm (rain), cm (snow);
 // conditions as Garmin Weather.CONDITION_* numbers; tmd 0 = Sunday.
 (:background)
 class WeatherService extends System.ServiceDelegate {
@@ -61,7 +62,7 @@ class WeatherService extends System.ServiceDelegate {
             return;
         }
         var d = data as Lang.Dictionary;
-        mResult = new [38];                          // fixed positions, see the table above (far lighter than a dictionary)
+        mResult = new [40];                          // fixed positions, see the table above (far lighter than a dictionary)
         mResult[0] = Time.now().value();
         var c = d["current"];
         if (c instanceof Lang.Dictionary) {
@@ -81,14 +82,14 @@ class WeatherService extends System.ServiceDelegate {
         var s12 = 0.0;
         if (h instanceof Lang.Dictionary) {
             var pop = h["precipitation_probability"];
-            mResult[14] = maxOf(pop, 0, 3);                    // rain chance, next 3 hours
+            mResult[14] = maxOf(pop, 1, 4);                    // rain chance, next 3 hours (index 0 is the hour just ended)
             mResult[10] = plus(at(h["rain"], 0), at(h["showers"], 0));   // rain + showers, last hour, mm (no snow)
             mResult[15] = at(h["temperature_2m"], 3);
             mResult[16] = cond(at(h["weather_code"], 3));
             mResult[17] = at(pop, 3);
             // 26: the thunderstorm start, set below from the weather codes (storm energy alone is no forecast)
             mResult[27] = at(h["freezing_level_height"], 0);   // m
-            mResult[37] = at(h["wind_gusts_10m"], 1);          // strongest gust of the coming hour, m/s
+            mResult[37] = maxOf(h["wind_gusts_10m"], 1, 3);    // strongest gust, the hour in progress and the next, m/s
             // one walk over the hours (at() is null past the end or for missing data): new snow, hours 1-24 (each
             // value is the hour before its time); rain + showers and snow, hours 1-12; the first thunderstorm hour
             // (codes 95-99), hours 0-6
@@ -112,6 +113,11 @@ class WeatherService extends System.ServiceDelegate {
                 var cw = at(hw, i);
                 if (i <= 6 && cw != null && cw >= 95 && mResult[26] == null) {
                     mResult[26] = at(h["time"], i);
+                }
+                var tv = at(h["temperature_2m"], i);           // the coldest of hours 1-3 (instant values), for
+                if (i > 0 && i <= 3 && tv != null && (mResult[38] == null || tv < mResult[38])) {   // a front by day
+                    mResult[38] = tv;
+                    mResult[39] = at(h["time"], i);
                 }
             }
             if (sn instanceof Lang.Array) {
@@ -181,7 +187,8 @@ class WeatherService extends System.ServiceDelegate {
             }
         }
         if (chg == null && hc instanceof Lang.Array && ht instanceof Lang.Array && pa instanceof Lang.Array) {
-            for (var j = 0; j < hc.size() && j < ht.size() && j < pa.size() && j <= 12; j += 1) {
+            // from index 1: the hour in progress (index 0 is the hour that just ended, so "now" would lag an hour)
+            for (var j = 1; j < hc.size() && j < ht.size() && j < pa.size() && j <= 12; j += 1) {
                 if (hc[j] != null && pa[j] != null && ht[j] >= tEnd) {   // the hours after the 15-minute data
                     var w = pa[j] >= 0.3;                // wet from the hour's amount: codes 51+ include light drizzle
                     var s = (hc[j] >= 71 && hc[j] <= 77) || hc[j] == 85 || hc[j] == 86;   // snow codes
@@ -190,7 +197,7 @@ class WeatherService extends System.ServiceDelegate {
                         mResult[34] = w ? (s ? 1 : 0) : null;
                     } else if (w != wet && !(wet && j + 1 < pa.size() && pa[j + 1] != null && pa[j + 1] >= 0.3)) {
                                                          // (rain to dry: the next hour dry too)
-                        chg = ht[j];
+                        chg = w ? ht[j] : ht[j] - 3600;   // rain: by the end of its hour; dry: from the start of the dry hour
                         if (w) {
                             mResult[34] = s ? 1 : 0;     // the coming precipitation
                         }

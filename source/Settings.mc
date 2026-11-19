@@ -14,7 +14,7 @@ module Cfg {
     const THEME = 5;
     const MINUTES = 6;
     const CIRCLE = 7;
-    const TZ = 8;
+    // 8: retired (was the 2nd time zone; its storage number stays reserved)
     const WX_SOURCE = 9;
     const WX_INTERVAL = 10;
     const COLON = 11;
@@ -74,7 +74,6 @@ module Cfg {
     const RW_OFF = 10;
     const CO_OFF = 29;
     const CM_OFF = 15;
-    const TZ_ZULU = 27;
 
     // column options (Rim layout; 0..11 are data fields)
     const FI_STEPS = 0;
@@ -121,20 +120,13 @@ module Cfg {
     const CM_SEC = 16;             // seconds after a wrist raise (after Off, so stored values keep their meaning)
 
     // weather update intervals in minutes, matching the WX_INTERVAL options
-    const WX_MINUTES = [ 15, 20, 30, 45, 60, 5, 10 ];        // options 5 and 6 appended; shown in order of minutes
+    const WX_MINUTES = [ 15, 20, 30, 45, 60, 5, 10 ]b;        // options 5 and 6 appended; shown in order of minutes
     const L1 = [ 3, 4, 5, 6, 10, 11, 13, 15, 16, 18, 21, 25, 26, 27, 33, 34 ]b;    // line 1 text options 3.. -> line-3 metric
 
-    const DEFAULTS = [ 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 4, 2, 0, 0, 1, 1, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 4 ]b;
-    const COUNTS = [ 8, 7, 18, 18, 18, 2, 4, 17, 28, 2, 7, 4, 2, 17, 17, 49, 49, 49, 26, 19, 8, 15, 48, 3, 8, 2, 31, 12, 21, 96, 7, 48 ]b;
+    const DEFAULTS = [ 0, 0, 0, 1, 2, 0, 0, 0, 0, 1, 0, 2, 1, 0, 1, 1, 0, 12, 1, 0, 0, 0, 47, 0, 7, 1, 24, 11, 0, 36, 0, 4 ]b;
+    const COUNTS = [ 8, 7, 18, 18, 18, 2, 4, 17, 1, 2, 7, 3, 2, 17, 17, 49, 49, 49, 26, 19, 8, 15, 48, 3, 8, 2, 31, 12, 21, 96, 7, 48 ]b;
 
-
-    // Settings grouped by theme, in screen order. The watch menu lists the group titles (from the
-    // menu texts, loaded only while it is open); the Garmin Connect app shows the same order with the
-    // group name in front of each title (tools/make_project.py).
-    const GROUPS = [ [ 12, 5, 24 ]b, [ 0, 19, 1, 20, 21, 22 ]b, [ 7 ]b, [ 23, 11, 6, 26, 27, 28, 29 ]b,
-                     [ 13, 14, 25 ]b, [ 2, 3, 4 ]b, [ 15, 16, 17, 18, 31 ]b, [ 9, 10 ]b, [ 30 ]b ];
-    const GROUP_ROWS = 5;      // shown only with the Rows layout
-    const GROUP_CHART = 6;     // shown only with the Chart layout
+    // (the menu's groups live in SettingsMenu.mc, so they take memory only while the menu is open)
 
     function get(i) {
         var v = Application.Properties.getValue("k" + i);         // storage names: k0 ... k31

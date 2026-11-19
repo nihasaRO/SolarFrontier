@@ -3,13 +3,16 @@ import Toybox.Lang;
 import Toybox.WatchUi;
 
 module SetText {
-    const IDS = [ Rez.JsonData.L2, Rez.JsonData.L5, Rez.JsonData.L11, Rez.JsonData.L12, Rez.JsonData.L13, Rez.JsonData.L14, Rez.JsonData.L16, Rez.JsonData.L17, Rez.JsonData.L21, Rez.JsonData.L23 ];
-    const IDX = [ 100, 101, 0, 0, 0, 102, 103, 1, 104, 105, 106, 107, 108, 2, 2, 3, 3, 3, 4, 5, 109, 6, 7, 110, 111, 112, 8, 113, 9, 114, 115, 7 ]b;
-
-    // setting i's options: an array of chunks (a computed list like "day" is one chunk)
+    // setting i's options: an array of chunks (a computed list like "day" is one chunk). Per setting (identical
+    // lists shared): below 100 a list resource, from 100 an entry of S. Built here, so no table stays in memory.
     function list(i) as Lang.Array {
-        var x = IDX[i];
-        return ((x < 100) ? WatchUi.loadResource(IDS[x]) : (WatchUi.loadResource(Rez.JsonData.S) as Lang.Array)[x - 100]) as Lang.Array;
+        var t = [ 100, 101, 0, 0, 0, 102, 103, 1, 104, 105, 106, 107, 108, 2, 2, 3, 3, 3, 4, 5, 109, 6, 7, 110, 111, 112, 8, 113, 9, 114, 115, 7 ]b;
+        var x = t[i];
+        if (x >= 100) {
+            return (WatchUi.loadResource(Rez.JsonData.S) as Lang.Array)[x - 100] as Lang.Array;
+        }
+        var ids = [ Rez.JsonData.L2, Rez.JsonData.L5, Rez.JsonData.L11, Rez.JsonData.L12, Rez.JsonData.L13, Rez.JsonData.L14, Rez.JsonData.L16, Rez.JsonData.L17, Rez.JsonData.L21, Rez.JsonData.L23 ];
+        return WatchUi.loadResource(ids[x]) as Lang.Array;
     }
 
     function title(i) as Lang.String {

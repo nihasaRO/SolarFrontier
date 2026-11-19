@@ -21,21 +21,26 @@ class MenuView extends WatchUi.View {
     private var mHead = "SETTINGS";
     private var mEntry = "";
     private var mValue = "";     // level 1: the current value; level 2: CURRENT when it is the stored one
+    private var mGroups;         // the settings grouped by theme, only while the menu exists
 
     function initialize(face) {
         View.initialize();
         mFace = face;
+        // Settings grouped by theme, in screen order. The menu lists the group titles; the Garmin Connect app shows
+        // the same order with the group name in front of each title (tools/make_project.py reads this list).
+        mGroups = [ [ 12, 5, 24 ]b, [ 0, 19, 1, 20, 21, 22 ]b, [ 7 ]b, [ 23, 11, 6, 26, 27, 28, 29 ]b,
+                    [ 13, 14, 25 ]b, [ 2, 3, 4 ]b, [ 15, 16, 17, 18, 31 ]b, [ 9, 10 ]b, [ 30 ]b ];
         show();
     }
 
     private function items() {
-        return Cfg.GROUPS[mGroup] as Lang.ByteArray;
+        return mGroups[mGroup] as Lang.ByteArray;
     }
 
 
     private function count() {
         if (mLevel == 0) {
-            return Cfg.GROUPS.size();
+            return mGroups.size();
         }
         if (mLevel == 1) {
             return items().size();

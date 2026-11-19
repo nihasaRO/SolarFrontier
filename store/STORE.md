@@ -9,59 +9,75 @@ An adventure watch face that shows what matters next.
 ## Description (paste into the store)
 
 YOUR WEATHER, LIGHT AND TRAIL, AT A GLANCE.
-Solar Frontier is a free adventure watch face for the Instinct 3 Solar (45 and 50 mm), drawn pixel by pixel for its high-contrast screen. A big, clear time. Every other zone yours to fill. And one line that thinks ahead for you.
+A free adventure watch face for the Instinct 3 Solar (45 and 50 mm), drawn pixel by pixel for its screen. A big, clear time, every other zone yours to fill, and one line that thinks ahead for you.
 
 CONTEXT: ONE LINE THAT WATCHES THE SKY
-Most faces show the same numbers all day. Context shows the one message most likely to change what you do next, and stays quiet when nothing does:
+Context shows the one message most likely to change what you do next, and stays quiet when nothing does:
 - "TSTORM ~16:00": a thunderstorm in the forecast, hours before it arrives.
 - "GUST ~72 KMH": strong gusts expected within the hour.
 - "RAIN ~30M" / "DRY ~25M": when the rain starts or stops ("RAIN BY 16:00" where the forecast is hourly).
 - "LIGHT 0:25": daylight left before sunset.
 - "HEAT 41°", "WINDCHILL -30°", "FREEZING RAIN", "FOG 0.3 KM": act now.
+- "TO 9° BY 15:00", "SNOW >1800 M", "BARO FALLING": a cold front, snow just above you, storm signs (even offline).
 - "DRY 12H+": nothing to worry about.
 The "~" means forecast: the face never pretends to know the minute.
 
 ONE FACE, ARRANGED YOUR WAY
-74 metrics and 631 options, all set on the watch itself (no phone needed) or in Garmin Connect:
-- Circle: 16 views, from the weather now, the next 3 hours or tomorrow, to the moon, wind, thunderstorm or seconds on wrist raise.
+74 metrics and 631 options, all set on the watch itself or in Garmin Connect:
+- Circle: 16 views, from the weather now, next 3 hours or tomorrow to the moon, wind or seconds.
 - Top lines: a status icon (alarm, Bluetooth, pressure drop and more), the date in 7 formats or a metric, a number with its own bar.
 - Line 3: any of 48 metrics, or Context, or one metric in large type.
 - Two side gauges, as bars or blocks.
-- Two layouts: three progress rows, or three columns with a history chart (heart rate, stress, Body Battery, pressure, altitude, temperature, Pulse Ox or solar, over 1, 3 or 4 hours).
+- Two layouts: three progress rows, or three columns with a history chart (8 sources over 1, 3 or 4 hours).
 - Wrist raise adds exact values.
 - Your style: dark or light theme, solid, outlined or dithered minutes, three colon styles, 12 or 24 hours.
 
 BUILT FOR THE OUTDOORS
-- Weather: temperature and feels-like, wind and Beaufort force, gusts now and in the next hour, rain chance and amounts, snow, freezing level and the margin to your altitude, visibility, UV, air quality (European or US index) and pollen.
+- Weather: feels-like, wind and Beaufort force, gusts, rain chance and amounts, snow, freezing level and the margin to your altitude, visibility, UV, air quality (European or US index), pollen (Europe).
 - Light: sunrise and sunset, first and last light, golden hour, day length, moon phase.
 - Terrain: altitude, barometric pressure and its trend, metres climbed and descended.
-- Body: heart rate and zone, Body Battery, stress, breathing, Pulse Ox, steps, floors, intensity minutes with your own daily goal.
+- Body: heart rate and zone, Body Battery, stress, breathing, Pulse Ox, steps, floors, intensity minutes.
 - Watch: battery and days left, solar intensity, notifications, and a countdown to a date or a daily time.
 
-YOUR WEATHER SOURCE
-Garmin's own weather, or free forecasts from Open-Meteo through your phone every 5 to 60 minutes. No account, no key, no data collected.
+WEATHER: OPEN-METEO OR GARMIN
+Open-Meteo is the default. Garmin's weather gives only the current conditions: temperature, feels-like, today's high and low, rain chance, wind and humidity. Everything forecast-based needs Open-Meteo (free, no account, no data collected): Next 3 Hours, Tomorrow, rain and dry timing, thunderstorms, gusts, UV, visibility, air quality, pollen, freezing level, snow, and most of Context.
+It downloads through your phone (every 5 to 60 minutes) and needs a known position: your GPS, Garmin's weather position or your last activity.
+
+IF THE WEATHER DOESN'T SHOW
+The Next 3 Hours and Tomorrow circles show the reason:
+- NO GPS: no position yet. Run an outdoor GPS activity for a minute.
+- NO DATA: no forecast yet. Wait for the next update.
+- ERR-104: the watch can't reach your phone (Bluetooth off, or Garmin Connect closed).
+- ERR-2 or ERR-300: the phone or the internet didn't answer in time. It retries.
+- ERR-402 or ERR-403: the forecast was too large for the watch's memory. Please report it.
+- ERR429: too many requests to Open-Meteo. It clears by itself.
+- ERR500 to ERR503: Open-Meteo is busy. It retries in 5 minutes.
+"AIR ERR" with a number means the same for the air-quality request.
 
 GOOD TO KNOW
-- The face cannot vibrate or sound an alarm. Context and the pressure-drop icon are indications from the forecast and your barometer, not official warnings; the Instinct's own storm alert remains the alarm.
-- Pollen: Europe only, in season.
+- The face cannot vibrate or sound an alarm. Context and the pressure-drop icon are indications, not official warnings; the Instinct's own storm alert remains the alarm.
 - Weather data by Open-Meteo.com (CC BY 4.0). Air quality and pollen: Copernicus Atmosphere Monitoring Service (CAMS) via Open-Meteo.
-- Permissions: health data and heart-rate zones, location (sun times, local weather), background and internet (Open-Meteo only).
+- Permissions: health data, location (sun times, weather), background and internet (Open-Meteo only).
 
 A personal project, built with the help of AI and shared for free.
 
 ## What's new
 
 WHAT'S NEW
-- Earlier wind warnings: if strong gusts are forecast for the next hour, Context tells you now, before they arrive ("GUST ~72 KMH"; the "~" means it's a forecast). A new Gusts next hour metric shows the same.
-- Air quality on your region's scale: in North America the US index (GOOD to HAZARDOUS), elsewhere the European one. Context now checks air quality even if no air metric is on your face.
-- The air-quality gauge no longer looks empty on clean days: GOOD fills the first segment, and the number shows the level, from 1 (best) to 6.
-- No more early "DRY": a short pause in the rain is no longer announced as its end.
-- Smoother on the watch: heavier readings now happen when you raise your wrist, not every minute. After changing settings, the chart takes a few seconds to come back.
-
-REMOVED TO MAKE ROOM
-- If you used one of these, the same spot now shows something close: Body Battery 2-hour change became Body Battery, Solstice/equinox became Gusts next hour, and the Diamonds colon became Squares. All your other settings stay as they were.
+- Context sees more coming: a cold front later today ("TO 9° BY 15:00"), a very different tomorrow ("TMRW HIGH 6°", in the evening), snow just above you while it rains ("SNOW >1800 M"), and storm signs from the watch's barometer ("BARO FALLING"), which work without a phone or signal.
+- More accurate timing: the 3-hour rain chance and the gust warning only look at the hours ahead, and outside Central Europe and North America "DRY BY" is no longer an hour late.
+- No more blank weather at midnight: tomorrow's high and low become today's until the next update.
+- The chart comes back about 3 seconds after you leave a menu, instead of when the watch goes back to sleep.
+- Wrist raise detail now works in the Rows layout too: the exact gauge values appear at the ends of the line under the time.
+- With Garmin weather, Next 3 Hours and Tomorrow now say OPEN METEO instead of showing dashes, since those two need it.
+- Fixed: the watch menu could fail when scrolling past the last colon style.
+- Lighter: the moon, the wind arrow and other small shapes now come from the font, and fewer readings happen inside each minute's redraw. Even with the new warnings, the face has more memory to spare than before. The moon now changes in steps (16 phases on the circle, 8 on line 1) and the wind arrow points in 16 directions.
+- New installs start with Open-Meteo weather (every 15 minutes), the Chart layout with the 3-hour heart rate, and Context on line 3. If you already use the face, your settings stay as they are.
 
 Version history:
+- 1.9.18 Context: a cold front within 3 hours by day (5° colder or more), tomorrow's high from 17:00 when it is 8° away from today's, the snow line (about 300 m below the freezing level, shown while it rains and when it is less than 800 m above you), and storm signs (more than 3 hPa lost in 3 hours, read at wrist raise). Wrist-raise gauge values in the Rows layout too. The chart is rebuilt about 3 seconds after a menu, not at the next sleep.
+- 1.9.17 Lighter: the moon, the wind arrow, the high/low triangles and the colon are now drawn from the icon font instead of code (the moon in 16 phases on the circle, 8 on line 1; the arrow in 16 directions), freeing about 0.6 kB of the watch's app memory.
+- 1.9.16 Weather no longer goes blank at midnight: tomorrow's high and low become today's until the next update. Rain chance and gusts look at the hours ahead (the hour that just ended no longer counts). Outside Central Europe and North America, rain and dry times follow the hour in progress, so "DRY BY" no longer runs an hour late. With Garmin weather, Next 3 Hours and Tomorrow say they need Open-Meteo instead of showing dashes. Fixed a menu fault past the last colon style. New installs start with Open-Meteo weather (every 15 minutes), the Chart layout with the 3-hour heart rate chart, and Context on line 3 (existing settings stay as they are). Lighter: fewer sensor reads inside the minute's redraw, and the settings menu's tables only use memory while the menu is open.
 - 1.9.15 Lighter at busy moments: the 3-hour pressure trend, stress and Body Battery are read when you raise your wrist or the watch goes to sleep, not inside the minute's redraw; after the settings menu, the chart refills a few seconds later. The air-quality gauge shows GOOD as a first segment (it looked empty before) and its number is the level (1-6).
 - 1.9.14 Context gets air quality on its own, so its air warnings work without an air metric on the face; the option is now simply called "Air quality".
 - 1.9.13 In North America, air quality uses the US index and its words (GOOD to HAZARDOUS); a short break in the rain no longer counts as dry (the next 75 minutes, or the next hour, must stay dry too).

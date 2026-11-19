@@ -15,7 +15,7 @@ import Toybox.WatchUi;
 import Toybox.Weather;
 
 // Solar Frontier: watch face for the Instinct 3 Solar (176 x 176 px, 1-bit MIP).
-// Shared: weather circle (16 modes), top block (date, battery + solar signal ramp, sun),
+// Shared: weather circle (15 modes, plus Off), top block (date, battery + solar signal ramp, sun),
 // time with an optional colon, and two vertical side gauges (Enduro-style bar or blocks,
 // ticks at 25/50/75 %). Lower part, chosen by the Layout setting:
 //  Rows   three progress rows (icon, bar, value); 10 cells for percentages, 5 for HR zones.
@@ -71,7 +71,6 @@ class SolarFrontierView extends WatchUi.WatchFace {
     private var wxAqi;             // European air quality 1..6 (Open-Meteo, CAMS)
     private var wxNote;           // why there is no weather data ("NO DATA", "NO GPS", "ERR..."), or null
     private var wxTs = null;      // timestamp of the applied weather data (null: none applied)
-    private var ccRead = -1000;    // when Garmin's conditions were last read (seconds)
     private var sunRead = -1000;   // when the position and sun times were last worked out (seconds)
     private var l1code = -1;       // the line-3 metric shown in line 1, or -1
     private var hrNow;             // heart rate read once per redraw
@@ -109,6 +108,8 @@ class SolarFrontierView extends WatchUi.WatchFace {
     private var pressShown = false;  // pressure (or its trend) is on the face    // the last heart-rate read was live (not from the history)
     private var h24 = true;        // 24-hour time, set at the start of each redraw (forecast times)
     private var wxGustH;           // the strongest gust of the coming hour (forecast), m/s
+    private var wxCold;            // the coldest of the next 3 hours (forecast), C, and its time
+    private var wxColdT;
     private var wxStormT;          // forecast thunderstorm start (codes 95-99, within 6 h), or null
     private var wxFine;            // flags: 1 native 15-minute forecast here (minute countdowns), 2 freezing rain within the hour
     private var pressureDrop = 0.0;   // Pa lost over the last 3 hours (storm alert above 300)
@@ -116,6 +117,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
     private var distMi = false;
     private var elevFt = false;
     private var awake = false;     // true for the few seconds after a wrist raise
+    private var chartWait = 0;     // redraws left before the chart is rebuilt after a menu (0: none pending)
     private var arcX;              // dotted-arc positions inside the subscreen
     private var arcY;
     private var fTiny;             // small digits for the gauge values on wrist raise (Chart layout only)
@@ -142,6 +144,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
     private var bodyBattery;
     private var hrNewest;
     private var altitude;
+    private var altNow;            // the live altitude from readHrNow's activity snapshot, m
     private var pressure;
     private var wxCondition;
     private var wxTemp;
@@ -209,6 +212,14 @@ class SolarFrontierView extends WatchUi.WatchFace {
         if (fSmall == null) {
             reloadLight();                           // fonts were freed for the settings menu: the light reload only
         }
+        if (chartWait > 0) {
+            chartWait -= 1;
+            if (chartWait == 0) {
+                // back from a menu ~2 s ago: the chart's history now, before anything is drawn (its read is freed
+                // before the drawing starts; under 2.5 kB free it is skipped and the chart waits for sleep)
+                rebuildChart();
+            }
+        }
         readHrNow();                                 // once per redraw; currentHr() reuses it
         var now = Time.now();
         var clock = System.getClockTime();
@@ -243,10 +254,18 @@ class SolarFrontierView extends WatchUi.WatchFace {
         if (cfg[Cfg.LAYOUT] == 1) {
             drawChartLower(dc, info, stats, settings);
         } else {
-            // Tray rail under the time: 45-degree ends echo the top rail and the panel corners
-            dc.drawLine(16, 122, 20, 118);
-            dc.drawLine(20, 118, 156, 118);
-            dc.drawLine(156, 118, 160, 122);
+            // Tray rail under the time: 45-degree ends echo the top rail and the panel corners. On wrist raise a
+            // gauge's exact value takes the place of its end of the rail (x 12..33 and 140..161, y 116..123)
+            var gv = detailsGauges();
+            var l = gv && cfg[Cfg.GAUGE_L] != Cfg.GA_OFF;
+            var r = gv && cfg[Cfg.GAUGE_R] != Cfg.GA_OFF;
+            if (!l) {
+                dc.drawLine(16, 122, 20, 118);
+            }
+            if (!r) {
+                dc.drawLine(156, 118, 160, 122);
+            }
+            dc.drawLine(l ? 37 : 20, 118, r ? 136 : 156, 118);
             for (var k = 0; k < 3; k += 1) {
                 drawRow(dc, cfg[Cfg.ROW1 + k], ROW_Y + k * ROW_PITCH, info, stats);
             }
@@ -266,11 +285,9 @@ class SolarFrontierView extends WatchUi.WatchFace {
         elevFt = (settings has :elevationUnits) && settings.elevationUnits == System.UNIT_STATUTE;
         // a skipped read (little memory) or an empty one keeps the last value, so gauges never go blank
         var nv;
-        if (nowSec - outRead > 900) {                    // read at wrist raises and sleep (readOutside); here only
-            nv = newest(Cfg.CH_STRESS);                  // when that has not happened for 15 minutes
-            stress = (nv != null) ? nv : stress;
-            nv = newest(Cfg.CH_BB);
-            bodyBattery = (nv != null) ? nv : bodyBattery;
+        if (nowSec - outRead > 900) {                    // read at wrist raises and sleep (readOutside); in a redraw
+            outRead = nowSec;                            // only when that has not happened for 15 minutes, and then
+            readSlow();                                  // every 15 minutes, not every minute
         }
         if (!hrLive) {                                   // readHrNow's answer (no second activity snapshot):
                                                          // the history only stands in for a missing live value
@@ -280,13 +297,11 @@ class SolarFrontierView extends WatchUi.WatchFace {
         var circle = cfg[Cfg.CIRCLE];
         var rim = cfg[Cfg.LAYOUT] == 1;
         altitude = null;
-        if (circle == Cfg.CM_ALTITUDE || (rim && colWants(Cfg.FI_ALTITUDE)) || lineShows(5) || lineShows(41)) {
-            altitude = newest(Cfg.CH_ALTITUDE);
+        if (circle == Cfg.CM_ALTITUDE || (rim && colWants(Cfg.FI_ALTITUDE)) || lineShows(5) || lineShows(41)
+                || lineShows(47)) {                    // (Context: the snow line)
+            altitude = altNow;                           // live first (no history read); the history only stands in
             if (altitude == null) {
-                var ai = Activity.getActivityInfo();
-                if (ai != null && (ai has :altitude)) {
-                    altitude = ai.altitude;
-                }
+                altitude = newest(Cfg.CH_ALTITUDE);
             }
             if (altitude != null && elevFt) {
                 altitude = altitude * 3.28084;
@@ -302,16 +317,9 @@ class SolarFrontierView extends WatchUi.WatchFace {
             pressRead = -1000;
         }
         if (rim) {
-            spo2 = colWants(Cfg.CO_SPO2) ? newest(Cfg.CH_SPO2) : null;
-            if (colWants(33)) {
-                readWatchTemp();
-            }
-            recordSolar(nowSec);
+            recordSolar(nowSec);                         // (SpO2 and the watch temperature: readSlow)
         }
-        if (lineShows(27)) {
-            readWatchTemp();
-        }
-        readWeatherAndSun(now, settings);
+        readWeatherAndSun();
         if (nowSec - sunRead > 21600) {
             updateSun();                                 // safety net: no wake-up for 6 hours
         }
@@ -563,7 +571,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
     // Status icons only appear while their state is on.
     private function drawCornerItem(dc as Dc, corner, x, settings, now) as Void {
         if (corner == 0) {
-            drawMoon(dc, x + 6, 17, 6, now.value());
+            drawIcon(dc, Ic.MS0 + moonGlyph(now.value(), 8), x, 11);
         } else if (corner == 1) {
             drawIconBox(dc, settings.phoneConnected ? Ic.C_PHONE : Ic.C_PHONE_X, x, 11, 13, 13);
         } else if (corner == 2) {
@@ -757,12 +765,12 @@ class SolarFrontierView extends WatchUi.WatchFace {
 
     // Loads the Rim-only resources when Rim is selected and frees them otherwise.
     private function loadLayoutResources() as Void {
+        if (fTiny == null) {
+            fTiny = WatchUi.loadResource(Rez.Fonts.Tiny);   // both layouts: the wrist-raise gauge values
+        }
         if (cfg[Cfg.LAYOUT] == 1) {
             if (fData == null) {
                 fData = WatchUi.loadResource(Rez.Fonts.Data);
-            }
-            if (fTiny == null) {
-                fTiny = WatchUi.loadResource(Rez.Fonts.Tiny);
             }
             if (cfg[Cfg.CHART] == 25) {
                 if (fBig == null) {
@@ -784,7 +792,6 @@ class SolarFrontierView extends WatchUi.WatchFace {
             }
         } else {
             fData = null;
-            fTiny = null;
             fBig = null;
             chartBars = null;
             solarBuf = null;
@@ -1005,7 +1012,8 @@ class SolarFrontierView extends WatchUi.WatchFace {
 
     // The next change between dry and wet, approximate on purpose. With native 15-minute data (US, Central Europe)
     // a countdown to the 15-minute block; elsewhere the forecast is hourly, so the hour it will have changed by:
-    // "RAIN BY 16:00" (the end of the first wet hour; it may start any time in that hour). Line 3: "RAIN ~25M", "SNOW ~4H",
+    // "RAIN BY 16:00" (the end of the first wet hour; it may start any time in that hour), "DRY BY 15:00" (the start
+    // of the first dry hour). Line 3: "RAIN ~25M", "SNOW ~4H",
     // "DRY 12H+", "DRY ~25M", "RAIN +14MM" (raining with no end in 12 h: the amount still to come in those 12 h;
     // "RAIN 12H+" when it is under 0.5), and "RAIN DUE" / "DRY DUE"
     // once the forecast moment has passed; minutes rounded to 5 below 100 minutes, then whole hours.
@@ -1059,10 +1067,15 @@ class SolarFrontierView extends WatchUi.WatchFace {
         var g = (wxGust == null) ? 0 : wxGust;
         var a = (wxAqi == null) ? 0 : wxAqi;
         var fog = wxCondition == 8;                      // a fog code (45/48; Garmin: fog), not visibility alone
-        var k = 6;                                       // 1 gust, 2 fog, 3 air, 4 freezing rain, 5 light, 6 dry/wet, 8 UV
+        var k = 6;                                       // 1 gust, 2 fog, 3 air, 4 freezing rain, 5 light, 6 dry/wet, 8 UV,
+                                                         // 12 snow line, 13 colder by day, 14 storm signs, 15 tomorrow
         var feels = (wxFeels == null) ? 0 : wxFeels;
         var gh = (wxGustH == null) ? 0 : wxGustH;        // the strongest gust of the coming hour (forecast)
-        var storm = (wxStormT == null) ? 9999 : (wxStormT - Time.now().value()) / 60;   // minutes to a forecast storm     // the forecast's feels-like: heat with humidity, cold with wind
+        var nowS = Time.now().value();
+        var storm = (wxStormT == null) ? 9999 : (wxStormT - nowS) / 60;   // minutes to a forecast storm
+        // the snow line, about 300 m below the freezing level (rule of thumb), up to 800 m above you while it
+        // rains or will within 3 hours; in the user's units, like the altitude
+        var sl = (frzLvl == null || altitude == null || wxSnowP == 1) ? -1 : ft(frzLvl - 300) - altitude;
         if (wxWet == 1 && wxSnowP == 1 && g >= 15.6) {
             k = 11;                                      // blowing snow: snow falling, gusts 15.6+ m/s (blizzard wind)
         } else if (g >= 17.2 || gh >= 17.2) {
@@ -1085,10 +1098,19 @@ class SolarFrontierView extends WatchUi.WatchFace {
             k = 7;                                       // a thunderstorm beats the rain it brings
         } else if (wxWet != null && left != null && left <= 120) {
             k = 6;
+        } else if (sl > 0 && sl <= ft(800) && (wxWet == 1 || (wxWet == 0 && left != null && left <= 180))) {
+            k = 12;                                      // rain here, snow not far above
         } else if (light <= 120) {
             k = 5;
         } else if (storm <= 360) {
             k = 7;                                       // a thunderstorm forecast within 6 h
+        } else if (wxCold != null && wxColdT != null && wxTemp != null && wxTemp - wxCold >= 5 && sunriseMin >= 0
+                   && nowMin >= sunriseMin && nowMin + (wxColdT - nowS) / 60 <= sunsetMin - 60) {
+            k = 13;                                      // 5°+ colder within 3 h, by day: a front. A normal afternoon
+                                                         // cools slower than that, and the last hour before sunset and
+                                                         // the night cool on their own, so they don't count
+        } else if (pressureDrop > 300.0) {
+            k = 14;                                      // storm signs: more than 3 hPa lost in 3 hours (works offline)
         } else if (g >= 13.9 || gh >= 13.9) {
             k = 1;
         } else if (fog) {
@@ -1097,6 +1119,8 @@ class SolarFrontierView extends WatchUi.WatchFace {
             k = 8;
         } else if (a >= 4) {
             k = 3;
+        } else if (nowMin >= 1020 && tmHigh != null && wxHigh != null && (tmHigh - wxHigh).abs() >= 8) {
+            k = 15;                                      // from 17:00: tomorrow's high 8°+ away from today's
         }
         if (k == 1) {                                    // now, or "~" when only the coming hour has them
             return (g >= gh) ? "GUST " + speedText(wxGust) : "GUST ~" + speedText(wxGustH);   // "~": forecast
@@ -1121,6 +1145,14 @@ class SolarFrontierView extends WatchUi.WatchFace {
             return "SNOW + GUSTS";
         } else if (k == 8) {
             return "UV " + num(wxUv) + " HIGH";
+        } else if (k == 12) {
+            return "SNOW >" + (((ft(frzLvl - 300) + 50) / 100).toNumber() * 100) + eUnit();   // "SNOW >1800 M"
+        } else if (k == 13) {
+            return "TO " + degText(wxCold) + " BY " + clockAt(wxColdT);
+        } else if (k == 14) {
+            return "BARO FALLING";
+        } else if (k == 15) {
+            return "TMRW HIGH " + degText(tmHigh);
         }
         if (wxWet != null) {
             return wetText(true, left);
@@ -1390,37 +1422,26 @@ class SolarFrontierView extends WatchUi.WatchFace {
     }
 
     // Small direction arrow (wind blowing toward the arrow), 9 px.
+    // Wind arrow (pointing downwind) centred on cx, cy: one of 16 pre-turned glyphs (icon font, outside the app's
+    // memory); a dash without a direction.
     private function drawArrowSmall(dc as Dc, cx, cy, bearing) as Void {
         if (bearing == null) {
             dc.fillRectangle(cx - 2, cy, 5, 1);
             return;
         }
-        var a = (bearing + 180) * Math.PI / 180.0;
-        var dx = Math.sin(a);
-        var dy = -Math.cos(a);
-        var tx = cx + 4 * dx;
-        var ty = cy + 4 * dy;
-        dc.drawLine(cx - 4 * dx, cy - 4 * dy, tx, ty);
-        dc.fillPolygon([ [ tx + 1 * dx, ty + 1 * dy ], [ tx - 3 * dx + 3 * dy, ty - 3 * dy - 3 * dx ],
-                         [ tx - 3 * dx - 3 * dy, ty - 3 * dy + 3 * dx ] ]);
+        drawIcon(dc, Ic.AR0 + ((bearing + 11.25) / 22.5).toNumber() % 16, cx - 5, cy - 5);
     }
 
-    // Chart layout: three columns, dotted dividers and the chart. On wrist raise the exact
-    // gauge values appear just below the time, by each side gauge.
+    // The moon's phase as one of n glyphs (16 for the circle, 8 for line 1), mirrored in the southern hemisphere.
+    private function moonGlyph(nowS, n) {
+        var i = (moonAge(nowS) * n / SYNODIC + 0.5).toNumber() % n;
+        return (locLat != null && locLat < 0) ? (n - i) % n : i;
+    }
+
+    // Chart layout: three columns, dotted dividers and the chart.
     private function drawChartLower(dc as Dc, info, stats, settings) as Void {
         if (fData == null) {
             loadLayoutResources();
-        }
-        if (detailsGauges() && fTiny != null) {
-            var lv = gaugeValue(cfg[Cfg.GAUGE_L], info, stats);
-            var rv = gaugeValue(cfg[Cfg.GAUGE_R], info, stats);
-            var uvKind = Cfg.GA_OFF + 5;
-            if (lv != null && cfg[Cfg.GAUGE_L] != Cfg.GA_OFF) {
-                dc.drawText(12, 116, fTiny, num((cfg[Cfg.GAUGE_L] == uvKind) ? wxUv : ((cfg[Cfg.GAUGE_L] == uvKind + 2) ? wxAqi : lv)), Graphics.TEXT_JUSTIFY_LEFT);
-            }
-            if (rv != null && cfg[Cfg.GAUGE_R] != Cfg.GA_OFF) {
-                dc.drawText(161, 116, fTiny, num((cfg[Cfg.GAUGE_R] == uvKind) ? wxUv : ((cfg[Cfg.GAUGE_R] == uvKind + 2) ? wxAqi : rv)), Graphics.TEXT_JUSTIFY_RIGHT);
-            }
         }
         for (var c = 0; c < 3; c += 1) {
             drawColumn(dc, cfg[Cfg.COL1 + c], COL_X[c], info, stats, settings);
@@ -1488,6 +1509,12 @@ class SolarFrontierView extends WatchUi.WatchFace {
             }
             var left = side == 0;
             var value = gaugeValue(kind, info, stats);
+            if (value != null && detailsGauges() && fTiny != null) {
+                // wrist raise, both layouts: the exact value just below the time (UV and air quality as is)
+                dc.drawText(left ? 12 : 161, 116, fTiny,
+                            num((kind == Cfg.GA_OFF + 5) ? wxUv : ((kind == Cfg.GA_OFF + 7) ? wxAqi : value)),
+                            left ? Graphics.TEXT_JUSTIFY_LEFT : Graphics.TEXT_JUSTIFY_RIGHT);
+            }
             var blocks = cfg[Cfg.GAUGE_STYLE] == 1;
             if (blocks) {
                 var bx = left ? 1 : 167;
@@ -1713,6 +1740,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
     }
 
     private function rebuildChart() as Void {
+        chartWait = 0;                                       // (done: no second rebuild if sleep came first)
         var kind = cfg[Cfg.CHART] / 3;
         cKey = cfg[Cfg.CHART];
         cStale = false;
@@ -1928,15 +1956,14 @@ class SolarFrontierView extends WatchUi.WatchFace {
         behindMenu = false;
         reloadLight();
         wxTs = null;                                    // settings may have changed: apply the saved weather again
-        ccRead = -1000;
         loadWeather(Application.Storage.getValue("wx"), Time.now().value());
         if (sunRead < 0) {
             rebuildChart();                              // first start: the chart's history and the sun times now
             updateSun();
         } else {
-            sunRead = Time.now().value() - 900;          // after the menu (or the widgets): sun times and the chart's
-        }                                                // full history at the next quiet moment (back to sleep, ~10 s;
-                                                         // onHide cleared the chart, so onEnterSleep rebuilds it)
+            sunRead = Time.now().value() - 900;          // after the menu (or the widgets): sun times at the next quiet
+            chartWait = 3;                               // moment (back to sleep); the chart two redraws after this one
+        }                                                // (onHide cleared it; onEnterSleep stays the fallback)
         readOutside();
     }
 
@@ -2050,14 +2077,27 @@ class SolarFrontierView extends WatchUi.WatchFace {
     // minute). A skipped or empty read keeps the last value.
     private function readOutside() as Void {
         outRead = Time.now().value();
-        if (pressShown) {
-            readPressTrend(outRead);                     // the 3-hour trend, outside the redraw
+        if (pressShown || lineShows(47)) {
+            readPressTrend(outRead);                     // the 3-hour trend, outside the redraw (Context: storm signs)
         }
+        readSlow();
+    }
+
+    // The history reads that can wait: stress, Body Battery, SpO2 and the watch temperature (each only changes
+    // every few minutes). Outside redraws, or from refreshMinute at most every 15 minutes.
+    private function readSlow() as Void {
         var v = newest(Cfg.CH_STRESS);
         stress = (v != null) ? v : stress;
         v = newest(Cfg.CH_BB);
         bodyBattery = (v != null) ? v : bodyBattery;
-        if (lineShows(27) || (cfg[Cfg.LAYOUT] == 1 && colWants(33))) {
+        var rim = cfg[Cfg.LAYOUT] == 1;
+        if (rim && colWants(Cfg.CO_SPO2)) {
+            v = newest(Cfg.CH_SPO2);
+            spo2 = (v != null) ? v : spo2;
+        } else {
+            spo2 = null;
+        }
+        if (lineShows(27) || (rim && colWants(33))) {
             readWatchTemp();
         }
     }
@@ -2081,21 +2121,15 @@ class SolarFrontierView extends WatchUi.WatchFace {
         return null;
     }
 
-    private function readWeatherAndSun(now, settings) as Void {
-        // Garmin weather: read every minute. With Open-Meteo selected, Garmin's conditions only give the
-        // position, which hardly changes: read them every 15 minutes, and keep the Open-Meteo values.
-        var wxMode = cfg[Cfg.WX_SOURCE] == 1;
-        var cc = null;
-        if ((Toybox has :Weather) && (!wxMode || now.value() - ccRead >= 900)) {
-            cc = Weather.getCurrentConditions();
-            ccRead = now.value();
+    private function readWeatherAndSun() as Void {
+        // Garmin weather: read every minute. With Open-Meteo selected nothing is read here: every weather value
+        // comes from Open-Meteo (or shows "--" with the reason), and updateSun takes the position outside redraws.
+        if (cfg[Cfg.WX_SOURCE] == 1) {
+            return;
         }
-        if (!wxMode) {
-            clearWeather();
-        }
-        // With Open-Meteo selected, Garmin's conditions only give the position for the fetch:
-        // every weather value comes from Open-Meteo, or shows "--" (with the reason) while it has none.
-        if (cc != null && cfg[Cfg.WX_SOURCE] != 1) {
+        clearWeather();
+        var cc = (Toybox has :Weather) ? Weather.getCurrentConditions() : null;
+        if (cc != null) {
             wxCondition = cc.condition;
             wxTemp = cc.temperature;
             wxHigh = cc.highTemperature;
@@ -2237,11 +2271,25 @@ class SolarFrontierView extends WatchUi.WatchFace {
             return;
         }
         var age = nowSec - wxTs;
-        if (age > 43200 || dayOf(wxTs) != dayOf(nowSec)) {
-            wxTs = null;                                // forecasts too old (or from another day): clear all
+        if (age > 43200) {
+            wxTs = null;                                // forecasts too old: clear all
             clearWeather();
             wxNote = errNote(Application.Storage.getValue("wxErr"));
-        } else if (age > wxMaxAge() && !wxStale) {
+            return;
+        }
+        if (tmDow != null && dayOf(wxTs) != dayOf(nowSec)) {
+            // past midnight before the next fetch: yesterday's "tomorrow" is today. The hourly values stay valid.
+            wxHigh = tmHigh;
+            wxLow = tmLow;
+            uvMax = null;
+            rainDay = null;
+            tmHigh = null;
+            tmLow = null;
+            tmCond = null;
+            tmPrecip = null;
+            tmDow = null;                               // (done once: the next minutes skip this)
+        }
+        if (age > wxMaxAge() && !wxStale) {
             wxStale = true;                             // only the "now" values: forecasts stay, off-grid too
             clearNow();
             wxNote = errNote(Application.Storage.getValue("wxErr"));
@@ -2261,8 +2309,8 @@ class SolarFrontierView extends WatchUi.WatchFace {
         if (cfg == null || cfg[Cfg.WX_SOURCE] != 1) {
             return;
         }
-        var ts = (o instanceof Lang.Array && o.size() == 38) ? o[0] : null;   // a summary, or an error number
-        if (ts == null || nowSec - ts > 43200 || dayOf(ts) != dayOf(nowSec)) {   // forecasts: up to 12 h, same day
+        var ts = (o instanceof Lang.Array && o.size() == 40) ? o[0] : null;   // a summary, or an error number
+        if (ts == null || nowSec - ts > 43200) {        // forecasts: up to 12 h (past midnight: checkWeatherAge)
             if (wxTs == null) {                         // keep fresh values when only an error arrived
                 clearWeather();
                 wxNote = errNote((o instanceof Lang.Number) ? o : Application.Storage.getValue("wxErr"));
@@ -2298,6 +2346,8 @@ class SolarFrontierView extends WatchUi.WatchFace {
         wxFine = o[36];
         wxStormT = o[26];
         wxGustH = o[37];
+        wxCold = o[38];
+        wxColdT = o[39];
         airErr = o[32];
         n3Temp = o[15];
         n3Cond = o[16];
@@ -2341,6 +2391,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
         uvMax = null;
         rainDay = null;
         frzLvl = null;
+        wxCold = null;
         snow24 = null;
         polLvl = null;
         polType = 0;
@@ -2481,67 +2532,13 @@ class SolarFrontierView extends WatchUi.WatchFace {
         return (p == 4 || q == 3) ? 53 : 52;
     }
 
-    private function drawMoon(dc as Dc, cx, cy, r, nowSec) as Void {
-        var age = moonAge(nowSec);
-        var k = Math.cos(2.0 * Math.PI * age / SYNODIC);
-        var waxing = age < SYNODIC / 2.0;
-        if (locLat != null && locLat < 0) {
-            waxing = !waxing;              // southern hemisphere sees it mirrored
-        }
-        var r2 = (r + 0.5) * (r + 0.5);
-        for (var dy = -r; dy <= r; dy += 1) {
-            var ady = dy < 0 ? -dy : dy;
-            var w = halfWidth(r2, dy);
-            var wn = halfWidth(r2, ady + 1);
-            if (wn < 0) {
-                wn = 0;
-            }
-            var edge = w - wn;
-            if (edge < 1) {
-                edge = 1;
-            }
-            if (ady == r) {
-                dc.fillRectangle(cx - w, cy + dy, 2 * w + 1, 1);
-            } else {
-                dc.fillRectangle(cx - w, cy + dy, edge, 1);
-                dc.fillRectangle(cx + w - edge + 1, cy + dy, edge, 1);
-            }
-            var t = ceilNum(k * w);
-            var a;
-            var b;
-            if (waxing) {
-                a = cx + t;
-                b = cx + w;
-            } else {
-                a = cx - w;
-                b = cx - t;
-            }
-            if (b >= a) {
-                dc.fillRectangle(a, cy + dy, b - a + 1, 1);
-            }
-        }
-    }
 
     private function moonAge(nowSec) {
         var age = (nowSec - NEW_MOON) / 86400.0;
         return age - (age / SYNODIC).toNumber() * SYNODIC;
     }
 
-    private function halfWidth(r2, dy) {
-        var q = r2 - dy * dy;
-        if (q < 0) {
-            return -1;
-        }
-        return Math.sqrt(q).toNumber();
-    }
 
-    private function ceilNum(x) {
-        var t = x.toNumber();
-        if (x > t) {
-            t += 1;
-        }
-        return t;
-    }
 
     // Time anchored on the colon at x 88: hours end and minutes start 3 px from the colon,
     // measured on the digits' ink (TimeInk), so both gaps are equal. Without a colon the
@@ -2571,7 +2568,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
         var mx = CX + half + 4 - TimeInk.X[mt];
         if (extra == 0) {
             dc.drawText(hx, 74, fTime, h.format(two ? "%02d" : "%d"), Graphics.TEXT_JUSTIFY_LEFT);
-            drawColon(dc, CX, style);
+            drawIcon(dc, (style == 1) ? Ic.K_DOT : Ic.K_SQ, CX - 2, 86);   // colon: circles or squares
             dc.drawText(mx, 74, mFont, m.format("%02d"), Graphics.TEXT_JUSTIFY_LEFT);
         } else {
             if (two) {
@@ -2597,23 +2594,6 @@ class SolarFrontierView extends WatchUi.WatchFace {
         }
     }
 
-    // [first, last] inked column of a digit string, relative to the pen position.
-
-
-    // Colon marks at one third and two thirds of the digit height: 1 circles, 2 squares, 3 diamonds.
-    private function drawColon(dc as Dc, cx, style) as Void {
-        for (var k = 0; k < 2; k += 1) {
-            var cy = (k == 0) ? 88 : 102;
-            if (style == 1) {                                // circles (diamonds removed in 1.9.12)
-                dc.fillRectangle(cx - 1, cy - 2, 3, 1);
-                dc.fillRectangle(cx - 2, cy - 1, 5, 3);
-                dc.fillRectangle(cx - 1, cy + 2, 3, 1);
-            } else {                                         // squares
-                dc.fillRectangle(cx - 2, cy - 2, 5, 5);
-            }
-        }
-    }
-
     // Heart rate now: read once per redraw (readHrNow), then reused. Each Activity.getActivityInfo() call
     // builds a full activity record, and the face needs the heart rate in up to eight places.
     private function currentHr() {
@@ -2624,6 +2604,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
         var act = Activity.getActivityInfo();
         hrLive = act != null && act.currentHeartRate != null;
         hrNow = hrLive ? act.currentHeartRate : hrNewest;
+        altNow = (act != null) ? act.altitude : null;    // for refreshMinute: the altitude without a history read
     }
 
     // ------------------------------------------------------------ circle (subscreen)
@@ -2649,10 +2630,17 @@ class SolarFrontierView extends WatchUi.WatchFace {
             drawTemp(dc, fMid, wxTemp, cy - 9);
             drawTri(dc, cx - 13, 47, false);
             dc.drawText(cx - 2, 44, fSmall, num(userTemp(wxLow)), Graphics.TEXT_JUSTIFY_LEFT);
-        } else if ((mode == Cfg.CM_NEXT3H || (mode == Cfg.CM_TOMORROW && tmHigh == null)) && wxNote != null) {
-            // no forecast: the title, then why (NO DATA, NO GPS or the error number)
+        } else if ((mode == Cfg.CM_NEXT3H || (mode == Cfg.CM_TOMORROW && tmHigh == null))
+                   && (wxNote != null || cfg[Cfg.WX_SOURCE] != 1)) {
+            // no forecast: the title, then why (NO DATA, NO GPS or the error number); with Garmin weather, the
+            // source these two need (they come only from Open-Meteo)
             drawCentered(dc, fSmall, (mode == Cfg.CM_NEXT3H) ? "+3H" : "TMRW", 6);
-            dc.drawText(cx, cy + 4, fSmall, wxNote, Graphics.TEXT_JUSTIFY_CENTER);
+            if (wxNote != null) {
+                dc.drawText(cx, cy + 4, fSmall, wxNote, Graphics.TEXT_JUSTIFY_CENTER);
+            } else {
+                drawCentered(dc, fSmall, "OPEN", cy - 9);
+                drawCentered(dc, fSmall, "METEO", cy + 3);
+            }
         } else if (mode == Cfg.CM_NEXT3H) {
             drawCentered(dc, fSmall, "+3H", 6);
             drawIconBox(dc, weatherIcon(n3Cond, false), cx - 27, cy - 13, 28, 23);
@@ -2706,7 +2694,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
             }
         } else if (mode == Cfg.CM_MOON) {
             var nowS = now.value();
-            drawMoon(dc, cx, cy - 5, 12, nowS);
+            drawIcon(dc, Ic.MB0 + moonGlyph(nowS, 16), cx - 12, cy - 17);
             var lText = num(moonLit(nowS));
             dc.drawText(cx - dc.getTextWidthInPixels(lText, fSmall) / 2, 45, fSmall, lText + "%", Graphics.TEXT_JUSTIFY_LEFT);
         } else if (mode == Cfg.CM_ALTITUDE) {
@@ -2858,11 +2846,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
     }
 
     private function drawTri(dc as Dc, x, y, up) as Void {
-        if (up) {
-            dc.fillPolygon([ [ x, y + 4 ], [ x + 4, y ], [ x + 8, y + 4 ] ]);
-        } else {
-            dc.fillPolygon([ [ x, y ], [ x + 8, y ], [ x + 4, y + 4 ] ]);
-        }
+        drawIcon(dc, up ? Ic.T_UP : Ic.T_DN, x, y);      // 9 x 5 glyphs
     }
 
 
@@ -2964,7 +2948,7 @@ class SolarFrontierView extends WatchUi.WatchFace {
     // ------------------------------------------------------------ pixel helpers
 
     private function drawIcon(dc as Dc, idx, x, y) as Void {
-        dc.drawText(x, y, fIcons, (65 + idx).toChar().toString(), Graphics.TEXT_JUSTIFY_LEFT);
+        dc.drawText(x, y, fIcons, (192 + idx).toChar().toString(), Graphics.TEXT_JUSTIFY_LEFT);   // from 192: no control codes
     }
 
     private function drawIconBox(dc as Dc, idx, x, y, bw, bh) as Void {
